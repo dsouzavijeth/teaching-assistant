@@ -1,0 +1,12 @@
+[project]
+name = "agent"
+version = "0.1.0"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "ag-ui-adk>=0.1.0",
+  "google-adk>=1.0.0",
+  "litellm>=1.60.0,<1.92.0",
+  "fastapi>=0.136.3",
+  "uvicorn>=0.48.0",
+  "python-dotenv>=1.2.2",
+]

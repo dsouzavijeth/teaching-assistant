@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "copilotkit-mcp": {
+      "type": "sse",
+      "url": "https://mcp.copilotkit.ai/sse"
+    },
+    "adk-docs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "mcpdoc",
+        "mcpdoc",
+        "--urls",
+        "AgentDevelopmentKit:https://adk.dev/llms.txt",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}
