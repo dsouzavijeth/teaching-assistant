@@ -192,3 +192,44 @@ body {
   box-shadow: 0 0 0 1px var(--line);
   cursor: pointer;
 }
+
+/* ── Living workspace: ambient scene + motion ─────────────────── */
+
+/* Slow-drifting colour blobs that make the workspace feel alive. Kept low
+ * opacity + heavily blurred so they read as ambient light, never as content;
+ * pointer-events off so they never intercept clicks. */
+.ambient-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(72px);
+  opacity: 0.2;
+  pointer-events: none;
+  will-change: transform;
+}
+@keyframes drift-a {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(8%, -6%) scale(1.18); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes drift-b {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-7%, 6%) scale(1.12); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.animate-drift-a { animation: drift-a 18s ease-in-out infinite; }
+.animate-drift-b { animation: drift-b 22s ease-in-out infinite; }
+
+/* Lesson card rising in as each step lands. */
+@keyframes card-rise {
+  0% { transform: translateY(12px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.animate-card-rise { animation: card-rise 0.42s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-drift-a,
+  .animate-drift-b,
+  .animate-card-rise {
+    animation: none !important;
+  }
+}

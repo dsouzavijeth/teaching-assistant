@@ -85,31 +85,52 @@ export function TutorWorkspace() {
   );
 
   return (
-    <div className="h-full flex flex-col">
-      {/* App-owned widget: reads the "playground" data model straight off the
-       * surface bus, independent of the A2UI catalog below. Only mounted once
-       * the agent has actually pushed a playground spec — before that, the
-       * lesson card owns the full workspace instead of a dead half-screen. */}
-      {hasPlayground && (
-        <div className="flex-1 min-h-0">
-          <Playground channel={CHANNEL} />
-        </div>
-      )}
+    <div className="relative h-full overflow-hidden">
+      {/* Ambient scene — slow-drifting brand-coloured light + a faint dot grid.
+       * Purely decorative and click-through, it gives the workspace life so it
+       * never reads as a flat empty panel. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="ambient-blob animate-drift-a"
+          style={{ width: 360, height: 360, left: "-8%", top: "-10%", background: "#bec2ff" }}
+        />
+        <div
+          className="ambient-blob animate-drift-b"
+          style={{ width: 300, height: 300, right: "-10%", top: "26%", background: "#85ecce" }}
+        />
+        <div
+          className="ambient-blob animate-drift-a"
+          style={{ width: 260, height: 260, left: "34%", bottom: "-12%", background: "#ffac4d", opacity: 0.14 }}
+        />
+        <div className="absolute inset-0 dot-grid opacity-70" />
+      </div>
 
-      <div
-        className={
-          hasPlayground
-            ? "shrink-0 max-h-[48%] overflow-y-auto border-t border-[var(--line)] bg-[var(--surface)]"
-            : "flex-1 min-h-0 overflow-y-auto bg-[var(--surface)]"
-        }
-      >
-        <A2UIProvider catalog={catalog} onAction={onAction}>
-          <LessonSurface
-            consumedRev={consumedRev}
-            onRevisionChange={handleRevisionChange}
-            fillHeight={!hasPlayground}
-          />
-        </A2UIProvider>
+      <div className="relative z-10 h-full flex flex-col">
+        {/* The live Playground takes the top when a spec exists; otherwise the
+         * lesson card owns the whole scene. */}
+        {hasPlayground && (
+          <div className="flex-1 min-h-0">
+            <Playground channel={CHANNEL} />
+          </div>
+        )}
+
+        {/* The lesson card — the hero. Frosted panel when it shares space with
+         * the Playground; centered on the ambient scene when it's alone. */}
+        <div
+          className={
+            hasPlayground
+              ? "shrink-0 max-h-[56%] overflow-y-auto border-t border-[var(--line)] bg-[color-mix(in_oklab,var(--surface)_82%,transparent)] backdrop-blur-sm"
+              : "flex-1 min-h-0 overflow-y-auto"
+          }
+        >
+          <A2UIProvider catalog={catalog} onAction={onAction}>
+            <LessonSurface
+              consumedRev={consumedRev}
+              onRevisionChange={handleRevisionChange}
+              fillHeight={!hasPlayground}
+            />
+          </A2UIProvider>
+        </div>
       </div>
     </div>
   );
@@ -215,11 +236,13 @@ function LessonSurface({
   }
 
   return (
+    // key={revision} remounts the card each step so it re-plays the entrance.
     <div
+      key={revision}
       className={
         fillHeight
-          ? "a2ui-surface p-6 md:p-8 max-w-3xl mx-auto"
-          : "a2ui-surface p-5"
+          ? "a2ui-surface p-6 md:p-8 max-w-3xl mx-auto animate-card-rise"
+          : "a2ui-surface p-5 animate-card-rise"
       }
     >
       <A2UIRenderer surfaceId={LESSON_SURFACE} />

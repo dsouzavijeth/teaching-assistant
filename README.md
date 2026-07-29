@@ -6,12 +6,13 @@ Adapted from [`trip-architect-a2ui`](../trip-architect-a2ui) (itself based on Co
 
 ## How it works
 
-- **Agent** (`agent/`) — a Google ADK `LlmAgent` served over [AG-UI](https://docs.ag-ui.com) via `ag-ui-adk`, on Nebius Token Factory through ADK's LiteLLM connector. Four tools, one per lesson step: `explain`, `interactive`, `quiz`, `finish_lesson`.
+- **Agent** (`agent/`) — a Google ADK `LlmAgent` served over [AG-UI](https://docs.ag-ui.com) via `ag-ui-adk`, on Nebius Token Factory through ADK's LiteLLM connector. Nine teaching tools, one lesson step per call: `explain`, `interactive`, `quiz`, `finish_lesson`, plus five content-shaped visuals — `show_steps`, `show_timeline`, `show_comparison`, `show_stats`, `show_image`.
 - **One step per turn** — a `before_model_callback` ends the run the moment one of those tools fires (ADK's equivalent of the LangGraph example's custom middleware), so Sage always pauses for the learner instead of teaching the whole lesson unattended.
 - **Conversation vs. teaching** — the system prompt keeps Sage chatting plainly until the learner actually wants to learn a topic, then switches into one-step-at-a-time teaching mode. `explain` cards carry a "think of it like…" analogy and a few badges to stay lively.
-- **Lesson cards** are A2UI surfaces composed from a small custom catalog (`Card`/`Stack`/`Row`/`Heading`/`Text`/`Callout`/`BulletList`/`Button`) — no bespoke renderers needed.
-- **The Playground** is the standout piece: `interactive(...)` hands the frontend a math.js expression in one variable (`x`) plus a slider range via an A2UI `update_data_model` op. The `Playground` React widget (app-owned, outside the catalog) reads that spec straight off the surface bus and recomputes the chart + result **entirely in the browser** — no round-trip to the model while dragging. The workspace shows the Playground pane only once a spec exists; until then the lesson card gets the full height.
-- **Voice** — [Vocal Bridge](https://vocalbridgeai.com) in *AI Agent Integration* mode. A spoken question is delegated over the data channel into the browser (`useAIAgent`), forwarded into the same chat thread Sage already answers in, and the rendered lesson's text is handed back to be **spoken aloud in sync with the on-screen card**. See [Voice setup](#voice-setup-optional).
+- **The UI adapts to the idea** — the prompt steers Sage to match the layout to the content: a process → `show_steps` (numbered flow), a chronology → `show_timeline`, a contrast → `show_comparison` (table), key numbers → `show_stats` (big-number tiles), something you can picture → `show_image`, a tunable quantity → `interactive`. The tools build the A2UI in Python (reliable on an open model) from a custom catalog — `Card`/`Stack`/`Row`/`Grid`/`Heading`/`Text`/`Overline`/`Badge`/`Callout`/`BulletList`/`Button`/`Steps`/`Timeline`/`DataTable`/`StatGrid`/`Image` — so lessons on different topics look genuinely different.
+- **Real images, no hallucinated URLs** — the open model can't generate images and would invent URLs, so images are fetched server-side from Wikipedia's API (free, no key, license-friendly) given only a search term; `find_wikipedia_image` in `tutor_agent.py` does the lookup with the stdlib alone. `explain` embeds a relevant photo up top on every card (a required `image_search` arg the model fills), and `show_image` renders a dedicated photo step — so images appear reliably instead of depending on the model choosing an image tool.
+- **The Playground** is the standout piece: `interactive(...)` hands the frontend a math.js expression in one variable (`x`) plus a slider range via an A2UI `update_data_model` op. The `Playground` React widget (app-owned, outside the catalog) reads that spec straight off the surface bus and recomputes the chart + result **entirely in the browser** — no round-trip to the model while dragging. The workspace shows the Playground pane only once a spec exists; until then the lesson card gets the full height, floating on a soft ambient backdrop with a card-entrance animation.
+- **Voice** — [Vocal Bridge](https://vocalbridgeai.com) in *AI Agent Integration* mode. A spoken question is delegated over the data channel into the browser (`useAIAgent`), forwarded into the same chat thread Sage already answers in, and Sage's reply is **spoken aloud** — the rendered lesson's text when Sage teaches, or the plain chat reply (e.g. a clarifying question) when Sage stays in conversation mode. See [Voice setup](#voice-setup-optional).
 
 ## Project layout
 
@@ -23,7 +24,7 @@ agent/                       Python — Google ADK agent
     a2ui.py                  A2UI v0.9 op builders (returns a dict, not a JSON
                              string — ADK wraps non-dict tool returns)
     catalog.py               Catalog prompt (mirrors src/a2ui/catalog/definitions.ts)
-    tutor_agent.py           The 4 tools, one-step-per-turn callbacks, system prompt
+    tutor_agent.py           The 9 teaching tools, image lookup, one-step-per-turn callbacks, system prompt
 
 src/                         Next.js frontend
   app/
@@ -34,10 +35,11 @@ src/                         Next.js frontend
     catalog/                 Zod defs + React renderers for the lesson catalog
     surface-bus.ts           Mirrors A2UI ops from chat into the workspace
   components/
-    TutorWorkspace.tsx       Lesson-card surface + Playground (adaptive layout)
+    TutorWorkspace.tsx       Lesson-card surface + Playground (adaptive layout,
+                             ambient backdrop, card-entrance motion)
     Playground.tsx           mathjs + recharts live slider widget
     VoiceControl.tsx         Voice: connect button, mic-device picker, live level
-                             meter, transcript, and spoken-lesson narration
+                             meter, transcript; narrates the lesson or chat reply
 ```
 
 ## Setup
@@ -76,7 +78,7 @@ This starts the Next.js app at `http://localhost:3000` (redirects to `/tutor`) a
 Voice uses Vocal Bridge's *AI Agent Integration* mode: the voice agent handles greetings/small talk and **delegates learning questions** to Sage.
 
 1. **Create a Vocal Bridge account** and API key at [vocalbridgeai.com](https://vocalbridgeai.com). The free tier includes 50 minutes and **1 agent** (no card required).
-2. **Create the voice agent in the dashboard** (API creation is paywalled; the dashboard is free). Choose **"An AI agent"** integration mode. Set *When to delegate* to route topic/learning questions to your agent, and turn **"Speak responses verbatim" ON** so it narrates Sage's lesson text faithfully.
+2. **Create the voice agent in the dashboard** (API creation is paywalled; the dashboard is free). Choose **"An AI agent"** integration mode. Set *When to delegate* to route topic/learning questions to your agent, and turn **"Speak responses verbatim" ON** so it narrates Sage's reply faithfully. With verbatim OFF the concierge paraphrases and blends in its own knowledge — if you want a strict relay, also tell it (in its instructions) to *never answer from its own knowledge, delegate every question, and add no commentary beyond a brief "one moment."*
 3. **Get the agent id** — `GET https://vocalbridgeai.com/api/v1/agents` with your key returns it, or it's in the dashboard.
 4. **Fill the root `.env`:**
    ```

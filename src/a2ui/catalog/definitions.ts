@@ -136,6 +136,70 @@ export const definitions = {
       }),
     }),
   },
+
+  Steps: {
+    description:
+      "Numbered process / how-it-works flow with connectors. Use for ordered stages (how binary search narrows the range, the steps of photosynthesis). Each step {title, detail?}.",
+    props: z.object({
+      steps: z.array(
+        z.object({ title: z.string(), detail: z.string().optional() }),
+      ),
+    }),
+  },
+
+  Timeline: {
+    description:
+      "Vertical chronological timeline. Use for history, story arcs, or a sequence of events over time. Each event {when, title, detail?}.",
+    props: z.object({
+      events: z.array(
+        z.object({
+          when: z.string(),
+          title: z.string(),
+          detail: z.string().optional(),
+        }),
+      ),
+    }),
+  },
+
+  DataTable: {
+    description:
+      "Comparison table (rows × columns). Use to contrast things side by side (inner vs outer planets, TCP vs UDP). columns is [{key,label,align?}]; rows is a list of records keyed by column key.",
+    props: z.object({
+      columns: z.array(
+        z.object({
+          key: z.string(),
+          label: z.string(),
+          align: z.enum(["left", "right"]).optional(),
+        }),
+      ),
+      rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))),
+    }),
+  },
+
+  StatGrid: {
+    description:
+      "Grid of big-number stat tiles that make key quantities pop (8 planets, 150M km, −273 °C). Each {value, label, caption?}. 2–4 tiles works best.",
+    props: z.object({
+      stats: z.array(
+        z.object({
+          value: z.string(),
+          label: z.string(),
+          caption: z.string().optional(),
+        }),
+      ),
+      columns: z.number().int().min(2).max(4).optional(),
+    }),
+  },
+
+  Image: {
+    description:
+      "A real, relevant photo with an optional caption. `src` is a real image URL — the show_image tool fetches it from Wikipedia; never invent a URL.",
+    props: z.object({
+      src: z.string(),
+      alt: z.string().optional(),
+      caption: z.string().optional(),
+    }),
+  },
 };
 
 export type Definitions = typeof definitions;

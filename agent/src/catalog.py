@@ -41,6 +41,18 @@ component must have `id: "root"`.
 - **BulletList** { items: [string], ordered?: bool }
     Key points, worked-example steps, etc.
 
+### Rich visuals (match the layout to the idea)
+- **Steps** { steps: [{title, detail?}] }
+    Numbered process / how-it-works flow with connectors.
+- **Timeline** { events: [{when, title, detail?}] }
+    Vertical chronological timeline.
+- **DataTable** { columns: [{key, label, align?}], rows: [record by column key] }
+    Side-by-side comparison table.
+- **StatGrid** { stats: [{value, label, caption?}], columns?: 2-4 }
+    Grid of big-number stat tiles.
+- **Image** { src, alt?, caption? }
+    A real photo. `src` is a real URL fetched from Wikipedia — never invented.
+
 ### Interactive (use only when the surface needs it)
 - **Button** { label: string, variant?: primary|secondary|ghost, action: { event: { name, context? } } }
     For a quiz, render ONE Button per answer option (not a single picker) —

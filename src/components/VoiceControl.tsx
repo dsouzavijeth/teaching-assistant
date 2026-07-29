@@ -154,6 +154,25 @@ function MicIcon({ className }: { className?: string }) {
   );
 }
 
+type AgentMessage = { role?: string; content?: unknown };
+
+/** The most recent assistant text reply in a message list — i.e. what Sage
+ * said in chat (conversation mode). Skips tool-call messages (no string
+ * content). Returned as the spoken response when no lesson card rendered. */
+function lastAssistantText(messages: readonly AgentMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m?.role === "assistant" &&
+      typeof m.content === "string" &&
+      m.content.trim()
+    ) {
+      return m.content.trim();
+    }
+  }
+  return null;
+}
+
 /** Turn a Vocal Bridge error code into a one-line hint the learner can act on. */
 function errorHint(code: string): string {
   switch (code) {
@@ -191,20 +210,30 @@ export function VoiceControl() {
         role: "user",
         content: query,
       });
-      // Start listening for the lesson BEFORE the run so no op is missed, then
-      // return the card's spoken text so the voice agent narrates the actual
-      // lesson (in sync with the visual card) rather than improvising or
-      // apologizing about a "panel" it can't see.
+      // Subscribe for a lesson render BEFORE the run so no op is missed.
       const lessonText = waitForNextLessonText(CHANNEL, 20000);
-      void agent
-        .runAgent()
-        .catch((err) => console.warn("[voice] runAgent failed", err))
-        .finally(() => setPending(false));
-      const spoken = await lessonText;
-      return (
-        spoken ??
-        "I've started a lesson on that — take a look at the panel on the right."
-      );
+      try {
+        const result = await agent.runAgent();
+        // Sage answers in one of two shapes: a rendered lesson CARD (teaching
+        // mode) or a plain CHAT reply (conversation mode — e.g. a clarifying
+        // question). Speak whichever actually happened, so voice never claims a
+        // lesson started when Sage only chatted. Race the lesson signal against
+        // a short grace window after the run finishes to cover render lag.
+        const lesson = await Promise.race([
+          lessonText,
+          new Promise<null>((r) => setTimeout(() => r(null), 1000)),
+        ]);
+        if (lesson) return lesson;
+        const chat = lastAssistantText(
+          (result as { newMessages?: AgentMessage[] })?.newMessages ?? [],
+        );
+        return chat ?? "Okay — what would you like to learn?";
+      } catch (err) {
+        console.warn("[voice] runAgent failed", err);
+        return "Sorry, something went wrong on my end.";
+      } finally {
+        setPending(false);
+      }
     },
   });
 

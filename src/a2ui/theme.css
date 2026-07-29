@@ -25,7 +25,10 @@
   color: var(--foreground);
 }
 
+/* Lesson images (the Image component) size themselves; keep them responsive
+   and rounded, but do NOT cap the height — that cap was for tiny logos the
+   tutor catalog no longer uses. */
 .a2ui-surface img {
-  max-height: 32px;
-  border-radius: 6px;
+  max-width: 100%;
+  border-radius: var(--radius);
 }

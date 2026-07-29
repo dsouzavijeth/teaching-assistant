@@ -23,6 +23,9 @@ invocation and stops — see https://adk.dev/runtime/event-loop for the
 """
 from __future__ import annotations
 
+import json
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 from google.adk.agents import LlmAgent
@@ -40,7 +43,17 @@ LESSON_SURFACE = "lesson-card"
 PLAYGROUND_SURFACE = "playground"
 
 # Tools that render a surface and must end the turn so the learner can respond.
-ONE_SHOT_TOOLS = {"explain", "interactive", "quiz", "finish_lesson"}
+ONE_SHOT_TOOLS = {
+    "explain",
+    "interactive",
+    "quiz",
+    "finish_lesson",
+    "show_steps",
+    "show_timeline",
+    "show_comparison",
+    "show_stats",
+    "show_image",
+}
 _TURN_FIRED_KEY = "_teaching_tool_fired"
 
 
@@ -102,6 +115,7 @@ def explain(
     takeaway: str,
     analogy: str,
     badges: list[str],
+    image_search: str,
 ) -> dict:
     """Render a short explanation card. Call ONCE per turn.
 
@@ -118,6 +132,11 @@ def explain(
             Only pass "" on a follow-up card that genuinely doesn't need one.
         badges: 1-3 tiny labels shown under the heading, e.g.
             ["Beginner friendly", "~3 min", "Biology"].
+        image_search: A concrete Wikipedia search term for a photo of the
+            subject, shown at the top of the card (e.g. "Nilgiri Mountains",
+            "Photosynthesis", "Saturn", "Toda people"). Keep it a plain,
+            canonical noun. For a purely abstract concept with nothing to
+            picture, pass "" and no image is shown.
     """
     children: list[dict] = [
         {"id": "ov", "component": "Overline", "text": topic.upper()},
@@ -132,6 +151,13 @@ def explain(
         extras.extend(
             {"id": badge_ids[i], "component": "Badge", "label": b, "tone": "neutral"}
             for i, b in enumerate(badges)
+        )
+    # A relevant photo up top, when the subject has one. Looked up server-side
+    # so the URL is always real — see find_wikipedia_image.
+    img_url = find_wikipedia_image(image_search) if image_search else None
+    if img_url:
+        children.append(
+            {"id": "img", "component": "Image", "src": img_url, "alt": topic}
         )
     children.extend(
         [
@@ -299,6 +325,184 @@ def quiz(
     )
 
 
+def _visual_card(overline: str, title: str, intro: str, viz: dict) -> dict:
+    """Build + render a lesson card whose body is a single rich visual
+    component (`viz`, already carrying id 'viz'). Shared by the show_* tools so
+    they all get the same Overline/Heading/intro framing."""
+    card = _card(
+        "default",
+        [
+            {"id": "ov", "component": "Overline", "text": overline},
+            {"id": "hd", "component": "Heading", "level": "2", "text": title},
+            {"id": "intro", "component": "Text", "text": intro},
+            viz,
+        ],
+    )
+    return a2ui.render(
+        operations=[
+            a2ui.create_surface(LESSON_SURFACE, catalog_id=CATALOG_ID),
+            a2ui.update_components(LESSON_SURFACE, card),
+        ]
+    )
+
+
+def show_steps(title: str, intro: str, steps: list[dict]) -> dict:
+    """Render a numbered PROCESS / how-it-works card. Call ONCE per turn.
+
+    Reach for this instead of `explain` when the concept is a SEQUENCE of
+    stages (how binary search halves the range, the steps of photosynthesis,
+    how a bill becomes law).
+
+    Args:
+        title: The concept, short and vivid (emoji prefix welcome).
+        intro: One sentence framing the process.
+        steps: 3-6 ordered stages, each a dict {"title": str, "detail": str}
+            where title is the short step name and detail is one sentence.
+    """
+    viz = {"id": "viz", "component": "Steps", "steps": steps}
+    return _visual_card("HOW IT WORKS", title, intro, viz)
+
+
+def show_timeline(title: str, intro: str, events: list[dict]) -> dict:
+    """Render a chronological TIMELINE card. Call ONCE per turn.
+
+    Reach for this when the concept unfolds over TIME (historical events, a
+    story's arc, the life cycle of a star, stages of an era).
+
+    Args:
+        title: The topic, short and vivid (emoji prefix welcome).
+        intro: One sentence framing the timeline.
+        events: 3-6 events in order, each a dict {"when": str, "title": str,
+            "detail": str} — when is the date/era label, title the headline,
+            detail one sentence.
+    """
+    viz = {"id": "viz", "component": "Timeline", "events": events}
+    return _visual_card("TIMELINE", title, intro, viz)
+
+
+def show_comparison(
+    title: str, intro: str, columns: list[dict], rows: list[dict]
+) -> dict:
+    """Render a side-by-side COMPARISON table card. Call ONCE per turn.
+
+    Reach for this when the point is to CONTRAST things (inner vs outer
+    planets, TCP vs UDP, mitosis vs meiosis).
+
+    Args:
+        title: What's being compared, short (emoji prefix welcome).
+        intro: One sentence framing the comparison.
+        columns: 2-4 columns, each a dict {"key": str, "label": str}. Use one
+            column as the row-label (e.g. key "aspect") and the rest as the
+            things being compared.
+        rows: each a dict keyed by every column key, e.g. with columns
+            [{"key":"aspect"},{"key":"inner"},{"key":"outer"}]:
+            {"aspect": "Size", "inner": "Small, rocky", "outer": "Large, gas"}.
+    """
+    viz = {"id": "viz", "component": "DataTable", "columns": columns, "rows": rows}
+    return _visual_card("COMPARE", title, intro, viz)
+
+
+def show_stats(title: str, intro: str, stats: list[dict]) -> dict:
+    """Render a grid of big-number STAT tiles. Call ONCE per turn.
+
+    Reach for this when a few striking QUANTITIES carry the idea (the scale of
+    the solar system, key facts about the human body, the numbers behind an
+    algorithm's speed).
+
+    Args:
+        title: The topic, short (emoji prefix welcome).
+        intro: One sentence framing the numbers.
+        stats: 2-4 tiles, each a dict {"value": str, "label": str,
+            "caption": str} — value is the headline number ("8", "150M km",
+            "−273 °C"), label the short name, caption an optional one-liner.
+    """
+    viz = {"id": "viz", "component": "StatGrid", "stats": stats}
+    return _visual_card("BY THE NUMBERS", title, intro, viz)
+
+
+_WIKI_UA = {"User-Agent": "living-tutor/1.0 (educational demo)"}
+
+
+def find_wikipedia_image(query: str) -> Optional[str]:
+    """Return a real image URL for `query` from Wikipedia, or None.
+
+    The open model can't generate images and would hallucinate URLs, so images
+    are sourced HERE from a real search — Wikipedia's API, which is free, needs
+    no key, and returns accurate, license-friendly images for educational
+    subjects. Uses only the stdlib so the agent gains no new dependency.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    params = urllib.parse.urlencode(
+        {
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": q,
+            "gsrlimit": 1,
+            "prop": "pageimages",
+            "piprop": "thumbnail",
+            "pithumbsize": 600,
+            "format": "json",
+        }
+    )
+    url = f"https://en.wikipedia.org/w/api.php?{params}"
+    try:
+        req = urllib.request.Request(url, headers=_WIKI_UA)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.load(resp)
+        pages = data.get("query", {}).get("pages", {})
+        for page in pages.values():
+            src = page.get("thumbnail", {}).get("source")
+            if src:
+                return src
+    except Exception:
+        return None
+    return None
+
+
+def show_image(title: str, search: str, caption: str, note: str) -> dict:
+    """Render a card with a REAL, relevant image + caption + a sentence of
+    context. Call ONCE per turn.
+
+    Reach for this whenever SEEING the subject helps — anything concrete you
+    can picture: an animal, plant, food, place, landmark, planet, organ,
+    artwork, historical figure, or object. The image is fetched from Wikipedia
+    from your `search` term — you never supply a URL.
+
+    Args:
+        title: The subject, short (emoji prefix welcome).
+        search: A concrete Wikipedia search term to fetch the image, e.g.
+            "Avocado", "Saturn", "Mount Everest", "Human heart", "Mona Lisa".
+            Keep it a plain noun — the more canonical, the better the match.
+        caption: A short caption shown under the image.
+        note: One or two sentences about what the learner is looking at.
+    """
+    src = find_wikipedia_image(search)
+    children: list[dict] = [
+        {"id": "ov", "component": "Overline", "text": title.upper()},
+        {"id": "hd", "component": "Heading", "level": "2", "text": title},
+    ]
+    if src:
+        children.append(
+            {
+                "id": "img",
+                "component": "Image",
+                "src": src,
+                "alt": caption,
+                "caption": caption,
+            }
+        )
+    children.append({"id": "note", "component": "Text", "text": note})
+    card = _card("default", children)
+    return a2ui.render(
+        operations=[
+            a2ui.create_surface(LESSON_SURFACE, catalog_id=CATALOG_ID),
+            a2ui.update_components(LESSON_SURFACE, card),
+        ]
+    )
+
+
 def finish_lesson(summary: str) -> dict:
     """Close out the lesson with a completion card. Call ONCE, instead of
     explain/interactive/quiz, when the topic is fully covered or the
@@ -370,13 +574,16 @@ Switch to this once the learner names a concept and wants to learn it (e.g.
 "explain compound interest", "teach me binary search"). Each turn, call
 EXACTLY ONE of:
 
-1. `explain(topic, body, key_points, takeaway, analogy, badges)` — introduce
-   or deepen a concept: 3-5 VIVID sentences in `body` (concrete examples, not
-   textbook definitions), 2-4 short `key_points`, one memorable `takeaway`.
-   On the FIRST card of a topic, always include `analogy` — a relatable
-   "think of it like..." comparison — and `badges` like
+1. `explain(topic, body, key_points, takeaway, analogy, badges, image_search)`
+   — introduce or deepen a concept: 3-5 VIVID sentences in `body` (concrete
+   examples, not textbook definitions), 2-4 short `key_points`, one memorable
+   `takeaway`. On the FIRST card of a topic, always include `analogy` — a
+   relatable "think of it like..." comparison — and `badges` like
    ["Beginner friendly", "~4 min", "Biology"]. Emoji in `topic` welcome
-   ("🌱 Photosynthesis").
+   ("🌱 Photosynthesis"). ALWAYS set `image_search` to a concrete noun that
+   names the subject so a real photo appears on the card (e.g. "Nilgiri
+   Mountains", "Saturn", "Toda people"); pass "" ONLY for a purely abstract
+   idea with nothing to picture.
 2. `interactive(title, intro, expression, x_label, y_label, min_value, max_value, step, initial)`
    — the signature move of this app: a live slider the learner drags while a
    chart recomputes instantly. Use it whenever the topic has ANY meaningful
@@ -399,10 +606,48 @@ EXACTLY ONE of:
 4. `finish_lesson(summary)` — call ONCE, instead of the above, once the
    topic is fully covered or the learner says they're done.
 
+### Rich visual steps — MATCH the layout to the idea
+
+Don't make every card a wall of text. When the CONTENT has a natural shape,
+reach for the matching visual tool instead of `explain`:
+
+5. `show_steps(title, intro, steps)` — a numbered PROCESS. Use for "how X
+   works" / ordered stages (how binary search halves the range, the steps of
+   photosynthesis). `steps` = 3-6 dicts {{"title", "detail"}}.
+6. `show_timeline(title, intro, events)` — a chronological TIMELINE. Use for
+   history, a story's arc, a life cycle. `events` = 3-6 dicts
+   {{"when", "title", "detail"}} in order.
+7. `show_comparison(title, intro, columns, rows)` — a side-by-side TABLE. Use
+   to contrast things (inner vs outer planets, TCP vs UDP). `columns` = 2-4
+   dicts {{"key", "label"}} (one column is the row label); `rows` = dicts keyed
+   by every column key.
+8. `show_stats(title, intro, stats)` — a grid of big-NUMBER tiles. Use when a
+   few striking quantities carry the idea. `stats` = 2-4 dicts
+   {{"value", "label", "caption"}}.
+9. `show_image(title, search, caption, note)` — a card with a REAL photo of
+   the subject (fetched from Wikipedia via your `search` term — you never
+   supply a URL). Use whenever SEEING it helps: an animal, plant, food, place,
+   landmark, planet, organ, artwork, or historical figure.
+
+Choosing well is what makes a lesson feel alive: a process → show_steps, a
+chronology → show_timeline, a contrast → show_comparison, key numbers →
+show_stats, something you can picture → show_image, a tunable quantity →
+interactive. `explain` is the versatile default ONLY when none of those fit.
+
+STRONGLY prefer a visual tool over plain `explain` whenever the topic has any
+structure or a concrete subject. Examples:
+- "nutritional value of fruits" -> show_stats (calories, vitamin C, fiber) or
+  show_comparison (apple vs banana vs orange), then maybe show_image.
+- "the water cycle" -> show_steps.
+- "tell me about avocados" -> show_image + a couple of facts.
+Reserve bare `explain` for genuinely abstract ideas with no natural shape.
+
 STOP after that one call. The turn ends automatically — wait for the learner.
 
-A typical great lesson arc: explain (with analogy) -> interactive ->
-quiz -> explain (deeper) -> quiz -> finish_lesson. Vary it to fit the topic.
+A typical great lesson mixes shapes, e.g.: show_image or explain (with
+analogy) -> show_steps or interactive -> quiz -> show_comparison or show_stats
+-> quiz -> finish_lesson. Vary it; don't repeat the same shape twice in a row
+when a different one fits better.
 
 Reacting to events (delivered as a tool result describing the learner's
 click):
@@ -440,7 +685,17 @@ def build_tutor_agent() -> LlmAgent:
         name="sage_tutor",
         model=get_model(),
         instruction=SYSTEM_PROMPT,
-        tools=[explain, interactive, quiz, finish_lesson],
+        tools=[
+            explain,
+            interactive,
+            quiz,
+            show_steps,
+            show_timeline,
+            show_comparison,
+            show_stats,
+            show_image,
+            finish_lesson,
+        ],
         after_tool_callback=_mark_teaching_tool_fired,
         before_model_callback=_one_step_per_turn,
     )

@@ -329,6 +329,198 @@ const Button = ({
   );
 };
 
+const Steps = ({
+  props,
+}: RendererProps<{ steps: { title: string; detail?: string }[] }>) => {
+  const steps = Array.isArray(props.steps) ? props.steps : [];
+  if (!steps.length) return null;
+  return (
+    <ol className="flex flex-col list-none pl-0 m-0">
+      {steps.map((s, i) => (
+        <li key={i} className="relative flex gap-3 pb-4 last:pb-0">
+          {i < steps.length - 1 && (
+            <span
+              aria-hidden
+              className="absolute left-[15px] top-8 bottom-0 w-px bg-[var(--line)]"
+            />
+          )}
+          <span className="relative z-10 flex-none w-8 h-8 rounded-full bg-[var(--lilac)] text-[var(--ink)] mono text-[13px] font-semibold flex items-center justify-center">
+            {i + 1}
+          </span>
+          <div className="flex flex-col gap-0.5 pt-1 min-w-0">
+            <span className="text-[14px] font-semibold text-[var(--ink)]">
+              {s.title}
+            </span>
+            {s.detail && (
+              <span className="text-[13px] text-[var(--ink-2)] leading-relaxed">
+                {s.detail}
+              </span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+};
+
+const Timeline = ({
+  props,
+}: RendererProps<{
+  events: { when: string; title: string; detail?: string }[];
+}>) => {
+  const events = Array.isArray(props.events) ? props.events : [];
+  if (!events.length) return null;
+  return (
+    <ol className="flex flex-col list-none pl-0 m-0">
+      {events.map((e, i) => (
+        <li key={i} className="relative flex gap-3.5 pb-4 last:pb-0">
+          {i < events.length - 1 && (
+            <span
+              aria-hidden
+              className="absolute left-[5px] top-4 bottom-0 w-px bg-[var(--line)]"
+            />
+          )}
+          <span
+            aria-hidden
+            className="relative z-10 mt-1.5 flex-none w-2.5 h-2.5 rounded-full bg-[var(--lilac)] ring-4 ring-[var(--lilac-soft)]"
+          />
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="mono text-[11px] uppercase tracking-[0.1em] text-[var(--ink)]/60">
+              {e.when}
+            </span>
+            <span className="text-[14px] font-semibold text-[var(--ink)]">
+              {e.title}
+            </span>
+            {e.detail && (
+              <span className="text-[13px] text-[var(--ink-2)] leading-relaxed">
+                {e.detail}
+              </span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+};
+
+const DataTable = ({
+  props,
+}: RendererProps<{
+  columns: { key: string; label: string; align?: "left" | "right" }[];
+  rows: Record<string, string | number>[];
+}>) => {
+  const columns = Array.isArray(props.columns) ? props.columns : [];
+  const rows = Array.isArray(props.rows) ? props.rows : [];
+  return (
+    <div className="overflow-x-auto rounded-[var(--radius)] border border-[var(--line)]">
+      <table className="w-full text-[13.5px] border-collapse">
+        <thead className="bg-[var(--surface-soft)]">
+          <tr>
+            {columns.map((c) => (
+              <th
+                key={c.key}
+                scope="col"
+                className={clsx(
+                  "px-3 py-2.5 font-medium mono uppercase tracking-[0.08em] text-[10.5px] text-[var(--ink)] border-b border-[var(--line)]",
+                  c.align === "right" ? "text-right" : "text-left",
+                )}
+              >
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr
+              key={i}
+              className="border-b border-[var(--line-2)] last:border-b-0"
+            >
+              {columns.map((c) => (
+                <td
+                  key={c.key}
+                  className={clsx(
+                    "px-3 py-2.5 text-[var(--ink-2)] align-top",
+                    c.align === "right"
+                      ? "text-right tabular-nums mono text-[13px]"
+                      : "text-left",
+                  )}
+                >
+                  {row[c.key] == null ? "" : String(row[c.key])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const StatGrid = ({
+  props,
+}: RendererProps<{
+  stats: { value: string; label: string; caption?: string }[];
+  columns?: number;
+}>) => {
+  const stats = Array.isArray(props.stats) ? props.stats : [];
+  if (!stats.length) return null;
+  const cols = props.columns ?? (stats.length >= 4 ? 4 : stats.length === 3 ? 3 : 2);
+  const colMap: Record<number, string> = {
+    2: "grid-cols-2",
+    3: "grid-cols-2 sm:grid-cols-3",
+    4: "grid-cols-2 sm:grid-cols-4",
+  };
+  return (
+    <div className={clsx("grid gap-3", colMap[cols] ?? "grid-cols-2")}>
+      {stats.map((s, i) => (
+        <div
+          key={i}
+          className="rounded-[var(--radius)] border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-1"
+        >
+          <span className="text-[24px] font-semibold tracking-tight text-[var(--ink)] tabular-nums leading-none">
+            {s.value}
+          </span>
+          <span className="mono text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink)]/60">
+            {s.label}
+          </span>
+          {s.caption && (
+            <span className="text-[12px] text-[var(--ink-2)] leading-snug mt-0.5">
+              {s.caption}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const ImageView = ({
+  props,
+}: RendererProps<{ src: string; alt?: string; caption?: string }>) => {
+  if (!props.src) return null;
+  return (
+    <figure className="m-0 flex flex-col items-center gap-2">
+      {/* Plain <img>: the src is an external Wikipedia URL, not a bundled asset,
+          so next/image's loader/domains config doesn't apply. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={props.src}
+        alt={props.alt ?? props.caption ?? ""}
+        loading="lazy"
+        // Inline maxHeight beats the global `.a2ui-surface img` rule.
+        style={{ maxHeight: 300 }}
+        className="w-auto max-w-full object-contain rounded-[var(--radius)] border border-[var(--line)] bg-[var(--surface-soft)]"
+      />
+      {props.caption && (
+        <figcaption className="text-[12px] text-center text-[var(--ink)]/60 leading-snug">
+          {props.caption}
+        </figcaption>
+      )}
+    </figure>
+  );
+};
+
 function Slot({ render }: { render: ReactNode }) {
   return <>{render}</>;
 }
@@ -346,4 +538,9 @@ export const renderers = {
   Callout,
   BulletList,
   Button,
+  Steps,
+  Timeline,
+  DataTable,
+  StatGrid,
+  Image: ImageView,
 };
